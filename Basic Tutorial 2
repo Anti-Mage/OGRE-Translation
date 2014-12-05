@@ -151,5 +151,91 @@
 		我们将会重写BaseApplication的视口创建函数，找到BasicTutorial2::createViewports成员函数。为了创建窗口，我们简单的调用渲染窗口的addViewport函数，使用我们使用的相机作为参数。BaseApplication类已经使用我们的渲染窗口填充了mWindow对象，因此添加下面这行代码就可以了：
 		// Create one viewport, entire window
     	Ogre::Viewport* vp = mWindow->addViewport(mCamera);
+		既然我们已经创建好了视口，我们可以用它在做什么呢？答案是：可以做的不太多。我们可以用它来做的最重要的事情是调用setBackgroundColour函数用我们选择的函数在设定背景颜色。因为本教程中我们在处理光线，所以我们需要把背景颜色设为黑色：
+		vp->setBackgroundColour(Ogre::ColourValue(0,0,0));
+		注意：ColourValue需要红、绿和蓝三个值作为颜色参数，它们的值都在0-1之间。我们需要做的最后也是最重要的意见事就是设定相机的纵横比。如果你使用其他的一些视口而不是标准的全屏 窗口视口而没有设定正确的纵横比，那么场景可能会看起来非常奇怪。我们将继续并设定它，尽管我们使用的是默认的纵横比：
+		// Alter the camera aspect ratio to match the viewport
+		mCamera->setAspectRatio(Ogre::Real(vp->getActualWidth()) / Ogre::Real(vp->getActualHeight()));
+		这就是我们需要为使用简单的视口类需要做的全部事情。
+		
+		已经完成了的createViewports函数看起来应该是下面这个样子的：
+		void BasicTutorial2::createViewports(void)
+		{
+		    // Create one viewport, entire window
+		    Ogre::Viewport* vp = mWindow->addViewport(mCamera);
+		    vp->setBackgroundColour(Ogre::ColourValue(0,0,0));
+		    // Alter the camera aspect ratio to match the viewport
+		    mCamera->setAspectRatio(Ogre::Real(vp->getActualWidth()) / Ogre::Real(vp->getActualHeight()));    
+		}
+		
+		现在你应该可以编译和运行你的程序，尽管除了一个空的场景什么都没有（按ESC键退出）。在继续下面的操作之前请运行你的程序并确保没有崩溃。
+		
+	
+	光照和阴影
+	—————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
+	OGRE支持的阴影类型
+	-------------------------------------------------------------------------------------------------------------------------
+	OGRE当前支持三种类型的阴影：
+		1、调制纹理阴影（Modulative Texture Shadows）（Ogre::SHADOWTYPE_TEXTURE_MODULATIVE）-三种阴影中计算量最小的。它创建了一个黑白的渲染到纹理上的阴影投射，然后应用到场景中。
+		2、调制模板阴影（Modulative Stencil Shadows）（Ogre::SHADOWTYPE_STENCIL_MODULATIVE）-这个技术将所有的阴影作为一个调幅度当所有的非透明的物体渲染到场景中的时候。它不像适应性模板阴影一样敏感，也没有适应性模板那样精确。
+		3、适应性模板阴影（Additive Stencil Shadows）（Ogre::SHADOWTYPE_STENCIL_ADDITIVE）-这个技术把每一条光线当做场景中一条独立的的路径。这在图形卡上实现非常困难，因为在渲染场景的时候每一条额外的光线需要一条额外的通路。
+		
+	OGRE不支持软阴影作为引擎的一部分。如果你想要软阴影，你需要写你自己的顶点和段程序。注意这里只是一个简短的介绍(http://www.ogre3d.org/docs/manual/manual_70.html).
+	
+	在OGRE中使用阴影
+	-------------------------------------------------------------------------------------------------------------------------
+		在OGRE中使用阴影相对来说比较简单。场景管理器类有一个 setShadowTechnique成员函数，我们可以用它来设置我们想要的阴影类型。当你创建了一个实体，你可以调用setCastShadows函数去设置实体是否产生阴影。
+		我们现在把环境光设为完全黑暗并设定阴影类型，找到BasicTutorial2::createScene成员函数，添加以下代码：
+		mSceneMgr->setAmbientLight(Ogre::ColourValue(0, 0, 0));
+		mSceneMgr->setShadowTechnique(Ogre::SHADOWTYPE_STENCIL_ADDITIVE);
+		现在场景管理器使用的是适应性模板阴影，让我们在场景中创建一个对象并让它投射阴影：
+		Ogre::Entity* entNinja = mSceneMgr->createEntity("Ninja", "ninja.mesh");
+		entNinja->setCastShadows(true);
+		mSceneMgr->getRootSceneNode()->createChildSceneNode()->attachObject(entNinja);
+		
+		我们同样需要一些忍者可以站在上面的物体（这样的话我们才可以让阴影投射到它上面）。我们可以创建一个简单的平面让忍者站在上面。这并不意味着本教程是叫你如何使用MeshManager的，因为我们要创建一个平面，我们将会把它最基本的东西过一遍。首先我们需要定义一个平面，定义一个平面需要提供法向量和它离原点的距离。例如我们可以使用平面组成世界几何的一部分，在这种情况下，我们需要指定离元低昂的距离而不是0。但是现在我们只需要一个以y轴正方向为法向量和离远点距离为0的平面：
+		Ogre::Plane plane(Ogre::Vector3::UNIT_Y, 0);
+		为了让我们的程序可以使用这个平面，我们需要注册这个平面。MeshManager记录了所有的已经加载了的网格模型（例如，我们的程序记录了我们使用过的ogrehead.mesh和ninja.mesh）。createPlane成员函数接受一个平面的定义,从参数中生成网格。我们使用下面的代码来注册平面：
+		Ogre::MeshManager::getSingleton().createPlane("ground", Ogre::ResourceGroupManager::DEFAULT_RESOURCE_GROUP_NAME,
+    plane, 1500, 1500, 20, 20, true, 1, 5, 5, Ogre::Vector3::UNIT_Z);
+    	在说一遍，我们不会深入介绍怎么使用MeshManager（如果你想准确的了解每一个参数的作用，请参考API）。我们创建了一个基本的1500*1500的平面，新的网格名称为"ground"。现在我们为网格创建实体并把它放到场景中。
+    	Ogre::Entity* entGround = mSceneMgr->createEntity("GroundEntity", "ground");
+		mSceneMgr->getRootSceneNode()->createChildSceneNode()->attachObject(entGround);
+		
+		干净吧？在我们完成我们的ground之前，我们还有两件事情要做。第一件事就是我们要告诉场景管理器我们不想让它投射阴影，因为它是用来被投射阴影的（其他物体的阴影投射到它上面）。第二个事情就是我们需要在它上面放一个纹理。我们的忍者网格模型已经有了一个已经定义好的材质脚本。当我们手动的创建我们的ground模型时，我们没有指定它要使用的纹理。我们将要使用"Examples/Rockwall"材质脚本，这个脚本包含在OGRE的样本中：
+		entGround->setMaterialName("Examples/Rockwall");
+		entGround->setCastShadows(false);
+		
+		下面是我们的createScene函数现在看起来的样子：
+		---------------------------------------------createScene-------------------------------------------------------------
+		void BasicTutorial2::createScene(void)
+		{
+		    mSceneMgr->setAmbientLight(Ogre::ColourValue(0, 0, 0));
+		    mSceneMgr->setShadowTechnique(Ogre::SHADOWTYPE_STENCIL_ADDITIVE);
+		 
+		    Ogre::Entity* entNinja = mSceneMgr->createEntity("Ninja", "ninja.mesh");
+		    entNinja->setCastShadows(true);
+		    mSceneMgr->getRootSceneNode()->createChildSceneNode()->attachObject(entNinja);
+		 
+		    Ogre::Plane plane(Ogre::Vector3::UNIT_Y, 0);
+		 
+		    Ogre::MeshManager::getSingleton().createPlane("ground", Ogre::ResourceGroupManager::DEFAULT_RESOURCE_GROUP_NAME,
+		        plane, 1500, 1500, 20, 20, true, 1, 5, 5, Ogre::Vector3::UNIT_Z);
+		 
+		    Ogre::Entity* entGround = mSceneMgr->createEntity("GroundEntity", "ground");
+		    mSceneMgr->getRootSceneNode()->createChildSceneNode()->attachObject(entGround);
+		 
+		    entGround->setMaterialName("Examples/Rockwall");
+		    entGround->setCastShadows(false);
+		 
+		}
+		--------------------------------------------end of createScene------------------------------------------------------
+		现在我们在场景中有了一个忍者和一个地面，让我们编译和运行我们的程序吧。我们什么都没有看到...！发生了什么？在前面的教程中我们添加实体，然后它们显示的很好。忍者没有显示出来的原因是场景的环境光被设置为完全黑暗。因此让我们添加光线，看看发生了什么。
+		
+	光线的类型
+	-------------------------------------------------------------------------------------------------------------------------
+		OGRE提供了3中光线：
+	
+		
 		
 

@@ -234,7 +234,135 @@
 		
 	光线的类型
 	-------------------------------------------------------------------------------------------------------------------------
-		OGRE提供了3中光线：
+		OGRE提供了3种光源：
+		1、点光源（Ogre::Light::LT_POINT）-点光源向周围均匀的发生光线。
+		2、聚光灯（Ogre::Light::LT_SPOTLIGHT）-聚光灯和手电筒工作的原理类似，光源有一个开始的位置，然后又一个朝向。你可以光源的内环和外环设定光源的角度的大小。
+		3、方向光源（Ogre::Light::LT_DIRECTIONAL）-方向光源模拟从一个方向过来的照射在场景中每一个物体的光源。假设你有你有一个晚上的场景，你想去模拟月光。你可以设定环境光来做到，但是这不是完全真实的，因为月光不是完全均匀的照射到场景中的每一个物体的（阳光也不是）。一种模拟月光的方法是：设定一个方向光源，并将光源的方向指定为月光的照射方向。
+		
+		Lights有很多的属性来描述光源的样子。一个光源两个最重要的属性是：漫反射和镜面反射的颜色。每个材质脚本都定义了反射多少漫反射和镜面反射光线，在后面的教程中我们将会学习如何控制材质的漫反射和镜面反射。
+	
+	创建光源
+	------------------------------------------------------------------------------------------------------------------------
+		在OGRE中我们调用场景管理器的createLight成员函数并提供光源的名称来创建一个光源，这和我们创建实体和相机的过程很像。在我们创建了一个光源之后我们可以手动的设定光源的位置或将它设定到场景节点中。和相机对象不同，光源对象只有setPositon和setDirection函数（没有像translate、pitch、yaw和roll等一套用于移动操作的函数）。因此，如果你想创建一个固定光源，你应该调用setPostion成员函数。如果你想要移动光源（例如创建一个跟随角色的光源），你应该将它附加到一个场景节点上。
+		让我们以最基本的点光源开始。我们首先创建一个光源、设置它的类型和位置。
+		Ogre::Light* pointLight = mSceneMgr->createLight("pointLight");
+	    pointLight->setType(Ogre::Light::LT_POINT);
+	    pointLight->setPosition(Ogre::Vector3(0, 150, 250));
+	    
+	    既然我们已经创建好了光源，我们可以设定 光源的漫反射颜色和镜面反射颜色。我们将它设置为红色：
+	    pointLight->setDiffuseColour(1.0, 0.0, 0.0);
+    	pointLight->setSpecularColour(1.0, 0.0, 0.0);
+    	
+    	现在编译和运行你的程序，成功！我们现在可以看到一个忍者和它投射了的阴影。确保你是从前面看忍者的，这样你可以看到一个完全的轮廓。有一个你需要注意的事情就是你并没哟看到光源。你看到光线产生了，但是没有看到实际的光源对象。许多OGRE教程通过添加一个简单的实体来显示光源的发射的位置。如果你对你的程序中的光源问题有些问题，你应该考虑像他们一样创建一些物体，这样你就可以准确的知道你的光源的位置。
+    	
+    	下面，让我们尝试一下我们的方向光源。注意到你的忍者的前面是如何上升回旋（pitch back）的吗？让我们添加少量的照射到忍者前面的黄色的方向光源。我们可以像点光源一样创建光源和设定光源的颜色：
+    	Ogre::Light* directionalLight = mSceneMgr->createLight("directionalLight");
+	    directionalLight->setType(Ogre::Light::LT_DIRECTIONAL);
+	    directionalLight->setDiffuseColour(Ogre::ColourValue(.25, .25, 0));
+	    directionalLight->setSpecularColour(Ogre::ColourValue(.25, .25, 0));
+	    因为方向光源被认为是来自遥远的距离，因此我们只需要设置它的方向，不需要设置它的位置。我们将方向设定为正Z轴和负y轴方向（光线像是来自忍者前面上面45度）。
+	    directionalLight->setDirection(Ogre::Vector3( 0, -1, 1 ));
+	    编译并运行这个程序，我们现在在场景中可以看到2个阴影。由于方向光源比较微弱，所以它产生的阴影也比较微弱。我们最后要演示的一种光源是聚光灯。我们将创建一个蓝色的聚光灯：
+	    Ogre::Light* spotLight = mSceneMgr->createLight("spotLight");
+	    spotLight->setType(Ogre::Light::LT_SPOTLIGHT);
+	    spotLight->setDiffuseColour(0, 0, 1.0);
+	    spotLight->setSpecularColour(0, 0, 1.0);
+	    我们同样需要给聚光灯光源设置位置和光源照射的方向。我们将会创建一个在忍者的右肩膀上盘旋，直接向下照射到他的聚光灯光源：
+	    spotLight->setDirection(-1, -1, 0);
+	 	spotLight->setPosition(Ogre::Vector3(300, 300, 0));
+	 	聚光灯光源同样允许我们指定光束的宽度（想象一下手电筒光束的宽度）。聚光灯光源的中心有一个核心的光束比其他的光束要亮。我们可以通过调用setSpotlightRange成员函数来设定这些光束的宽度：
+	 	spotLight->setSpotlightRange(Ogre::Degree(35), Ogre::Degree(50));
+	 	
+	 	编译并运行程序。紫色的忍者...危险！！！
+	 	
+	 	现在我们的createScene函数看起来应该像下面这个样子：
+	 	void BasicTutorial2::createScene(void)
+		{
+		    mSceneMgr->setAmbientLight(Ogre::ColourValue(0, 0, 0));
+		    mSceneMgr->setShadowTechnique(Ogre::SHADOWTYPE_STENCIL_ADDITIVE);
+		 
+		    Ogre::Entity* entNinja = mSceneMgr->createEntity("Ninja", "ninja.mesh");
+		    entNinja->setCastShadows(true);
+		    mSceneMgr->getRootSceneNode()->createChildSceneNode()->attachObject(entNinja);
+		 
+		    Ogre::Plane plane(Ogre::Vector3::UNIT_Y, 0);
+		 
+		    Ogre::MeshManager::getSingleton().createPlane("ground", Ogre::ResourceGroupManager::DEFAULT_RESOURCE_GROUP_NAME,
+		        plane, 1500, 1500, 20, 20, true, 1, 5, 5, Ogre::Vector3::UNIT_Z);
+		 
+		    Ogre::Entity* entGround = mSceneMgr->createEntity("GroundEntity", "ground");
+		    mSceneMgr->getRootSceneNode()->createChildSceneNode()->attachObject(entGround);
+		 
+		    entGround->setMaterialName("Examples/Rockwall");
+		    entGround->setCastShadows(false);
+		 
+		    Ogre::Light* pointLight = mSceneMgr->createLight("pointLight");
+		    pointLight->setType(Ogre::Light::LT_POINT);
+		    pointLight->setPosition(Ogre::Vector3(0, 150, 250));
+		 
+		    pointLight->setDiffuseColour(1.0, 0.0, 0.0);
+		    pointLight->setSpecularColour(1.0, 0.0, 0.0);
+		 
+		    Ogre::Light* directionalLight = mSceneMgr->createLight("directionalLight");
+		    directionalLight->setType(Ogre::Light::LT_DIRECTIONAL);
+		    directionalLight->setDiffuseColour(Ogre::ColourValue(.25, .25, 0));
+		    directionalLight->setSpecularColour(Ogre::ColourValue(.25, .25, 0));
+		 
+		    directionalLight->setDirection(Ogre::Vector3( 0, -1, 1 )); 
+		 
+		    Ogre::Light* spotLight = mSceneMgr->createLight("spotLight");
+		    spotLight->setType(Ogre::Light::LT_SPOTLIGHT);
+		    spotLight->setDiffuseColour(0, 0, 1.0);
+		    spotLight->setSpecularColour(0, 0, 1.0);
+		 
+		    spotLight->setDirection(-1, -1, 0);
+		    spotLight->setPosition(Ogre::Vector3(300, 300, 0));
+		 
+		    spotLight->setSpotlightRange(Ogre::Degree(35), Ogre::Degree(50));
+		}
+		
+
+你应该尝试的一些事情
+—————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
+	不同的阴影类型
+	-------------------------------------------------------------------------------------------------------------------------
+		在这个demo中，我们只是将阴影的类型设定为SHADOWTYPE_STENCIL_ADDITIVE。试着将阴影类型设定为其他的两种类型并观察发生了什么。在场景管理器中同样有很多与阴影相关的函数，试着使用它们并观察函数引起的变化。
+	
+	光线衰减
+	-------------------------------------------------------------------------------------------------------------------------
+		光源类定义了setAttenuation函数，它可以让你远离光源的时候控制光源的发散。给点光源添加一个函数调用并给它设定不同的衰减值，观察它是如何影响光源的。
+		
+	SceneManager::setAmbientLight
+	-------------------------------------------------------------------------------------------------------------------------
+		试验场景管理器的setAmbientLight函数。
+		
+	视口背景颜色
+	-------------------------------------------------------------------------------------------------------------------------
+		改变createViewports函数中默认的颜色值，在这种情况下除了将它改为黑色，其他的颜色都不太合适，但是知道如何改变它还是不错的。
+		
+	Camera::setFarClipDistance
+	-------------------------------------------------------------------------------------------------------------------------
+		在createCamera函数中我们设定了近裁剪距离。添加一个setFarClipDistance函数调用去设置远裁剪距离为500，当你离开的时候看着忍者，但是模板阴影打开的时候看不到忍者。注意到了吗？
+		注意：为了完成这个你需要调用mSceneMgr->setShadowUseInfiniteFarPlane(false)，并且你可能会得到一些奇怪的阴影。
+		
+	平面
+	-------------------------------------------------------------------------------------------------------------------------
+		在这个教程中我们不会讲太多关于平面的内容（它不是这篇文章的重点）。在后面的教程中我们将回顾这个主题，但是现在你应该去查createPlane（http://www.ogre3d.org/docs/api/1.9/class_ogre_1_1_mesh_manager.html#a0b9b36dd24c9288b1b0211035d951d20）函数并尝试给这个函数提供一些（不同的）输入。
+		
+		
+总结
+—————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
+	现在你应该理解了相机、光源和阴影的一些基础知识。我们将会在后面的教程中更多的使用它。
+	
+	完整代码
+	-------------------------------------------------------------------------------------------------------------------------
+		如果你在创建这个教程中（的代码)的时候遇到了一些问题,去看一下源代码（http://www.ogre3d.org/tikiwiki/tiki-index.php?page=BasicTutorial2Source）并和你的代码比较一下。
+		
+	下一个教程
+	-------------------------------------------------------------------------------------------------------------------------
+		请到基础教程3（http://www.ogre3d.org/tikiwiki/tiki-index.php?page=Basic+Tutorial+3）：地形、天空和雾。
+	    
+	    
 	
 		
 		

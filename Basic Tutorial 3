@@ -1,0 +1,150 @@
+基础教程3 地形、天空和雾
+————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
+	教程简介
+		在本教程中我们将会学习在OGRE中如何操作地形、天空和雾。学完了本教程之后你应该可以明白Skybox、Skyplane和Skydoom之间的区别并能够使用它们。你也应该知道不同种类的雾的差别并能够使用它们。
+		
+前提条件
+————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————		本教程认为你已经知道如何使用C++语言编程并且能够设置和编译Ogre程序。
+  	本教程同样认为你已经使用Ogre Wiki Tutorial Framework、CMake或者Ogre Appwizard创建了一个工程。如果没有的话请看http://www.ogre3d.org/tikiwiki/tiki-index.php?page=Setting+Up+An+Application吧。
+  	本教程是在前面一个教程的基础上创建的，我们假设你已经完成了前面的教程。
+  	
+  	当你在学习本教程的时候你应该慢慢的向你的项目中添加代码，编译并观察添加的代码的效果。你也可以在这儿（http://www.ogre3d.org/tikiwiki/tiki-index.php?page=BasicTutorial3Source）看到本教程的最终代码。如果你的代码有问题，你应该比较你的代码和教程的最终代码。
+  	
+目录
+————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
+	--前提条件
+	--开始
+		--代码
+		--项目设置
+			--Visual Studio
+			--Code:Blocks
+			--CMake
+			--Auto Tools
+	--地形
+		--处理相机
+		--设置方向和环境光
+		--配置我们的地形
+		--目前createScene函数
+		--配置默认地形
+		--定义地形
+		--getTerrainImage
+		--initBlendMaps
+		--编译并运行第一部分
+		--frameRenderingQueued
+		--createFrameListener
+		--destroyScene
+		--编译并运行第二部分
+	--天空
+		--SkyBoxes
+		--SkyDomes
+		--SkyPlanes
+		--应该用哪一个？
+	--雾
+		--雾的简介
+		--雾的类型
+		--雾和天空
+		--用雾来模拟黑暗
+	--总结
+		--全部代码
+		--下一步
+		
+开始
+—————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
+	在之前的OGRE版本中，如果你想在你的程序中使用地形，你不得不地形场景管理器（http://www.ogre3d.org/tikiwiki/tiki-index.php?page=Terrain+Scene+Manager）。现在不用了，新的地形系统可以提供（你使用地形）。
+	从OGRE1.7开始（Cthugha），现在有3个部分：地形(Terrain)、分页(Paging)和属性(Property)。地形和分页部分有特殊的关系，所以在OGRE地形中可以使用分页部分。
+	本教程将会介绍OGRE的地形部分，后面的教程将会介绍分页部分。
+	
+	代码
+	-------------------------------------------------------------------------------------------------------------------------
+		修改你的基础教程3类(BasicTutorial3)的头文件，使它看起来像下面这个样子：
+		#include <Terrain/OgreTerrain.h>
+		#include <Terrain/OgreTerrainGroup.h>
+		#include "BaseApplication.h"
+		 
+		class BasicTutorial3 : public BaseApplication
+		{
+		private:
+		    Ogre::TerrainGlobalOptions* mTerrainGlobals;
+		    Ogre::TerrainGroup* mTerrainGroup;
+		    bool mTerrainsImported;
+		 
+		    void defineTerrain(long x, long y);
+		    void initBlendMaps(Ogre::Terrain* terrain);
+		    void configureTerrainDefaults(Ogre::Light* light);
+		public:
+		    BasicTutorial3(void);
+		    virtual ~BasicTutorial3(void);
+		 
+		protected:
+		    virtual void createScene(void);
+		    virtual void createFrameListener(void);
+		    virtual void destroyScene(void);
+		    virtual bool frameRenderingQueued(const Ogre::FrameEvent& evt);
+		};
+		
+		确保你的BasicTutorial3类的实现文件看起来像下面这个样子（在main()函数之前）：
+		#include "BasicTutorial3.h"
+ 
+		//-------------------------------------------------------------------------------------
+		BasicTutorial3::BasicTutorial3(void)
+		{
+		}
+		//-------------------------------------------------------------------------------------
+		BasicTutorial3::~BasicTutorial3(void)
+		{
+		}
+		//-------------------------------------------------------------------------------------
+		void BasicTutorial3::destroyScene(void)
+		{
+		 
+		}
+		//-------------------------------------------------------------------------------------
+		void getTerrainImage(bool flipX, bool flipY, Ogre::Image& img)
+		{
+		 
+		}
+		//-------------------------------------------------------------------------------------
+		void BasicTutorial3::defineTerrain(long x, long y)
+		{
+		 
+		}
+		//-------------------------------------------------------------------------------------
+		void BasicTutorial3::initBlendMaps(Ogre::Terrain* terrain)
+		{
+		 
+		}
+		//-------------------------------------------------------------------------------------
+		void BasicTutorial3::configureTerrainDefaults(Ogre::Light* light)
+		{
+		 
+		}
+		//-------------------------------------------------------------------------------------
+		void BasicTutorial3::createScene(void)
+		{
+		 
+		}
+		//-------------------------------------------------------------------------------------
+		void BasicTutorial3::createFrameListener(void)
+		{
+		 
+		}
+		//-------------------------------------------------------------------------------------
+		bool BasicTutorial3::frameRenderingQueued(const Ogre::FrameEvent& evt)
+		{
+		    bool ret = BaseApplication::frameRenderingQueued(evt);
+		    return ret;
+		}
+		
+	项目设置
+	—————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
+		Visual Studio
+		---------------------------------------------------------------------------------------------------------------------
+			为了能够编译上面的代码，你需要链接OGRE地形部分。在windows系统上，将OgreTerrain.lib和OgreTerrain_d.lib分别添加到你的项目输入库中。
+			在解决方案窗口右键点击BasicTutorial3，转到属性窗口，然后可以看到配置管理器。在左上方的下拉框中选择配置（Release Debug）,然后配置属性->连接器->输入，添加上面的文件。
+			
+		Code::Blocks
+		---------------------------------------------------------------------------------------------------------------------
+			为了能够编译上面的代码，你需要链接OGRE地形部分。在windows系统上，将OgreTerrain.lib和OgreTerrain_d.lib分别添加到你的项目输入库中。
+			在上面的主菜单栏中点击“项目”，点击"Build"选项，然后配置管理器就出现了。
+	
+  	

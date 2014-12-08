@@ -146,5 +146,298 @@
 		---------------------------------------------------------------------------------------------------------------------
 			为了能够编译上面的代码，你需要链接OGRE地形部分。在windows系统上，将OgreTerrain.lib和OgreTerrain_d.lib分别添加到你的项目输入库中。
 			在上面的主菜单栏中点击“项目”，点击"Build"选项，然后配置管理器就出现了。
+			确保左边的项目树的“Debug”被选中，点击“链接器设置”，在链接库下面点击“添加”，输入“OgreTerrain_d”，没有引号。
+			你的输入应该被添加到链接库区域。现在在左边的项目树中选择Release，如果问你是否保存设置，点击确定。
+			重复上面的Debug部分的设置，不过要将OgreTerrain_d中的_d去掉。
+			好了，现在可以点击确定并保存你的设置了。
+			
+		CMake
+		---------------------------------------------------------------------------------------------------------------------
+			对于CMake，在CMakeLists.txt文件中，找到find_package(OGRE REQUIRED)，在它后面添加如下代码：
+			# Add OgreTerrain.{so,dll,etc.} to our linked libraries
+			#   These variables are defined in FindOGRE.cmake, mine is
+			#   found at /usr/local/lib/OGRE/cmake/
+			if (OGRE_Terrain_FOUND)
+			# pretty sure the following include is unneeded
+			  # include_directories(${OGRE_Terrain_INCLUDE_DIRS})
+			# append OgreTerrain to the end of the OGRE_LIBRARIES variable
+			  set(OGRE_LIBRARIES ${OGRE_LIBRARIES} ${OGRE_Terrain_LIBRARIES})  
+			  message(STATUS "Found OGRE_Terrain: ${OGRE_Terrain_LIBRARIES}")
+			else (OGRE_Terrain_FOUND)
+			  message(SEND_ERROR "OgreTerrain Library not found.")
+			endif(OGRE_Terrain_FOUND)
+			
+		AutoTools
+		---------------------------------------------------------------------------------------------------------------------
+			对于AutoTools，请参考（http://www.ogre3d.org/tikiwiki/tiki-index.php?page=Setting+Up+An+Application+-+Autotools+-+Linux#http_www_ogre3d_org_tikiwiki_Setting_Up_An_Application_Autotools_Linux）使用OGRE的地形创建你的configure.ac文件。
+			现在文件应该看起来像下面这个样子：
+			 AC_INIT(configure.ac)
+			 AM_INIT_AUTOMAKE(tuto3, 0.1)
+			 AM_CONFIG_HEADER(config.h)
+			 
+			 AC_LANG_CPLUSPLUS
+			 AC_PROG_CXX
+			 AM_PROG_LIBTOOL
+			 
+			 PKG_CHECK_MODULES(OGRE, [OGRE >= 1.2 OGRE-Terrain >= 1.7.1])
+			 AC_SUBST(OGRE_CFLAGS)
+			 AC_SUBST(OGRE_LIBS)
+			 
+			 PKG_CHECK_MODULES(OIS, [OIS >= 1.0])
+			 AC_SUBST(OIS_CFLAGS)
+			 AC_SUBST(OIS_LIBS)
+			 
+			 AC_CONFIG_FILES(Makefile)
+			 AC_OUTPUT
+			 
+	
+	地形
+	—————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
+		本教程中我们的项目将包含2个主要的部分：TerrainGroup和Terrain。地形系统中同样还有TerrainGlobalOptions，但是它们只是作为补充的一个部分。你可以认为TerrainGroup是类似于林中空地、草地或操场。TerrainGroup可以将一系列的地形块聚合在一起。这个细分是用来做LOD渲染，它取决于相机离每个地形的距离。反过来，地形是由扭在一起组成的。我们将会使用没有分页的TerrainGroup；有分页的地形系统将在中级教程中介绍。
+		在我们渲染我们的场景之前，我们必须为OGRE的地形系统设置所有必要的参数。
+		
+		处理相机相关（的参数设置）
+		---------------------------------------------------------------------------------------------------------------------
+			首先，让我们为我们的地形修改我们 的相机对象
+			将下面的代码放到BasicTutorial3::createScene function中：
+			mCamera->setPosition(Ogre::Vector3(1683, 50, 2116));
+		    mCamera->lookAt(Ogre::Vector3(1963, 50, 1660));
+		    mCamera->setNearClipDistance(0.1);
+		    mCamera->setFarClipDistance(50000);
+		 
+		    if (mRoot->getRenderSystem()->getCapabilities()->hasCapability(Ogre::RSC_INFINITE_FAR_PLANE))
+		    {
+		        mCamera->setFarClipDistance(0);   // enable infinite far clip distance if we can
+		    }
+		    
+		    上面的代码除了设置相机的位置和方向，还调整了远近裁剪距离。
+		    地形相对来说是比较大的，并且我们想要我们的相机可以看到更远的距离。
+		    如果渲染系统支持的话，将它设置为无穷远。
+		    
+			设置方向光源和环境光源
+		   	-----------------------------------------------------------------------------------------------------------------
+		  		地形系统使用环境光来计算地形的光图，因此在我们的场景中放一个方向光源：
+		  		Ogre::Vector3 lightdir(0.55, -0.3, 0.75);
+			    lightdir.normalise();
+			 
+			    Ogre::Light* light = mSceneMgr->createLight("tstLight");
+			    light->setType(Ogre::Light::LT_DIRECTIONAL);
+			    light->setDirection(lightdir);
+			    light->setDiffuseColour(Ogre::ColourValue::White);
+			    light->setSpecularColour(Ogre::ColourValue(0.4, 0.4, 0.4));
+			 
+			    mSceneMgr->setAmbientLight(Ogre::ColourValue(0.2, 0.2, 0.2));
+			    我们同时也将我们的环境光设置为平滑的光源。
+			    
+			配置我们的地形
+			-----------------------------------------------------------------------------------------------------------------
+				首先，我们使用TerrainGlobalOptions类创建一组新的全局地形选项。这是一个选项类，仅仅是存储我们将要创建的地形的一些默认选项并提供一些设置器和索引器。对于每一个地形也有局部的选项，它被称为DefaultImportSettings，你将会在后面的教程中看到。
+				mTerrainGlobals = OGRE_NEW Ogre::TerrainGlobalOptions();
+				接着我们可以构建我们的TerrainGroup对象-这是一个用于管理地形网格的帮助类，但是它不做任何分页（这是由分页部分完成的，我们将在中级教程中介绍）。
+				mTerrainGroup = OGRE_NEW Ogre::TerrainGroup(mSceneMgr, Ogre::Terrain::ALIGN_X_Z, 513, 12000.0f);
+			    mTerrainGroup->setFilenameConvention(Ogre::String("BasicTutorial3Terrain"), Ogre::String("dat"));
+			    mTerrainGroup->setOrigin(Ogre::Vector3::ZERO);
+			    
+			    TerrainGroup类的构造函数需要我们的场景管理器实例，地形对其选项、地形尺寸和地形世界尺寸作为参数。
+			    接着我们调用setFilenameConvention函数来告诉TerrainGroup我们想要用什么名称来保存我们的地形。
+			    最后我们设置TerrainGroup的原点。
+			    
+			    现在是时候配置我们的地形了：
+			    configureTerrainDefaults(light);
+			    我们将会在后面处理configureTerrainDefaults函数。
+			    注意我们给这个函数传递了传递了我们的方向光源作为参数。
+			    
+			    接着我们定义我们的地形并让TerrainGroup把它们都加载进来：
+			    for (long x = 0; x <= 0; ++x)
+			        for (long y = 0; y <= 0; ++y)
+			            defineTerrain(x, y);
+			 
+			    // sync load since we want everything in place when we start
+			    mTerrainGroup->loadAllTerrains(true);
+			    因为我们只有一个地形，我们只需要调用defineTerrain一次，如果我们有多个地形，我们就需要处理多次。我们将在后面处理defineTerrain函数。现在，如果我们导入了我们的地形，我们将会计算blendmap：
+			    if (mTerrainsImported)
+			    {
+			        Ogre::TerrainGroup::TerrainIterator ti = mTerrainGroup->getTerrainIterator();
+			        while(ti.hasMoreElements())
+			        {
+			            Ogre::Terrain* t = ti.getNext()->instance;
+			            initBlendMaps(t);
+			        }
+			    }
+			    上面的代码根据可用的地形来循环调用initBlendMaps函数。我们后面将介绍initBlendMaps函数。
+			    现在剩下的事情就是清理我们创建初始地形：
+			    mTerrainGroup->freeTemporaryResources();
+			    
+			目前createScene函数的样子：
+				下面的代码显示的是目前createScene函数的样子：
+				void BasicTutorial3::createScene(void)
+				{
+				    mCamera->setPosition(Ogre::Vector3(1683, 50, 2116));
+				    mCamera->lookAt(Ogre::Vector3(1963, 50, 1660));
+				    mCamera->setNearClipDistance(0.1);
+				    mCamera->setFarClipDistance(50000);
+				 
+				    if (mRoot->getRenderSystem()->getCapabilities()->hasCapability(Ogre::RSC_INFINITE_FAR_PLANE))
+				    {
+				        mCamera->setFarClipDistance(0);   // enable infinite far clip distance if we can
+				    }
+				 
+				    Ogre::MaterialManager::getSingleton().setDefaultTextureFiltering(Ogre::TFO_ANISOTROPIC);
+				    Ogre::MaterialManager::getSingleton().setDefaultAnisotropy(7);
+				 
+				    Ogre::Vector3 lightdir(0.55, -0.3, 0.75);
+				    lightdir.normalise();
+				 
+				    Ogre::Light* light = mSceneMgr->createLight("tstLight");
+				    light->setType(Ogre::Light::LT_DIRECTIONAL);
+				    light->setDirection(lightdir);
+				    light->setDiffuseColour(Ogre::ColourValue::White);
+				    light->setSpecularColour(Ogre::ColourValue(0.4, 0.4, 0.4));
+				 
+				    mSceneMgr->setAmbientLight(Ogre::ColourValue(0.2, 0.2, 0.2));
+				 
+				    mTerrainGlobals = OGRE_NEW Ogre::TerrainGlobalOptions();
+				 
+				    mTerrainGroup = OGRE_NEW Ogre::TerrainGroup(mSceneMgr, Ogre::Terrain::ALIGN_X_Z, 513, 12000.0f);
+				    mTerrainGroup->setFilenameConvention(Ogre::String("BasicTutorial3Terrain"), Ogre::String("dat"));
+				    mTerrainGroup->setOrigin(Ogre::Vector3::ZERO);
+				 
+				    configureTerrainDefaults(light);
+				 
+				    for (long x = 0; x <= 0; ++x)
+				        for (long y = 0; y <= 0; ++y)
+				            defineTerrain(x, y);
+				 
+				    // sync load since we want everything in place when we start
+				    mTerrainGroup->loadAllTerrains(true);
+				 
+				    if (mTerrainsImported)
+				    {
+				        Ogre::TerrainGroup::TerrainIterator ti = mTerrainGroup->getTerrainIterator();
+				        while(ti.hasMoreElements())
+				        {
+				            Ogre::Terrain* t = ti.getNext()->instance;
+				            initBlendMaps(t);
+				        }
+				    }
+				 
+				    mTerrainGroup->freeTemporaryResources();
+				}
+			    不要尝试现在就编译程序，知道我们实现了地形的辅助函数程序才会运行。
+			    
+			配置TerrainDefaults
+			-----------------------------------------------------------------------------------------------------------------
+				OGRE地形部分是很容易配置的。
+				mTerrainGlobals是我们Ogre::TerrainGlobalOptions对象的实例。
+				
+				找到configureTerrainDefaults函数并添加如下的代码：
+				// Configure global
+			    mTerrainGlobals->setMaxPixelError(8);
+			    // testing composite map
+			    mTerrainGlobals->setCompositeMapDistance(3000);
+			    
+			    首先，我们设置两个全局变量：MaxPixelError和CompositeMapDistance。
+			    MaxPixelError决定我们地形的精度。更小的数值表示更高的精度，这是以性能为代价的（因为有更多的顶点）。
+			    CompositeMapDistance决定OGRE地形在lightmap上渲染的距离。
+			    
+			    接下来，我们用我们的方向光源来处理lightmapping：
+			    // Important to set these so that the terrain knows what to use for derived (non-realtime) data
+			    mTerrainGlobals->setLightMapDirection(light->getDerivedDirection());
+			    mTerrainGlobals->setCompositeMapAmbient(mSceneMgr->getAmbientLight());
+			    mTerrainGlobals->setCompositeMapDiffuse(light->getDiffuseColour());
+			    它使用我们的光源设置方向和漫反射颜色和设置漫反射颜色去匹配我们的场景管理器的环境光。
+			    
+			    接下来，我们定义一些ImportData的值：
+			    // Configure default import settings for if we use imported image
+			    Ogre::Terrain::ImportData& defaultimp = mTerrainGroup->getDefaultImportSettings();
+			    defaultimp.terrainSize = 513;
+			    defaultimp.worldSize = 12000.0f;
+			    defaultimp.inputScale = 600; // due terrain.png is 8 bpp
+			    defaultimp.minBatchSize = 33;
+			    defaultimp.maxBatchSize = 65;
+			    
+			    我们不去介绍本教程中这些值是怎么来的，但是terrainSize和worldSize被设置为匹配我们的全局大小（我们在TerrainGroup中设置的），inputScale决定高度图是如果缩放的。在这边我们使用缩放是因为图像的精度是有限的（注意：你可以使用floating point raw heightmaps禁止inputScale,但是这些图需要有损的数据压缩，在这种情况下，你可以设置inputScale = 1）.
+			    例如，一个原始的高度图不需要缩放，因为它存储的值是未缩放的浮点数。
+			    
+			    最后一步是添加我们的纹理：
+			    // textures
+			    defaultimp.layerList.resize(3);
+			    defaultimp.layerList[0].worldSize = 100;
+			    defaultimp.layerList[0].textureNames.push_back("dirt_grayrocky_diffusespecular.dds");
+			    defaultimp.layerList[0].textureNames.push_back("dirt_grayrocky_normalheight.dds");
+			    defaultimp.layerList[1].worldSize = 30;
+			    defaultimp.layerList[1].textureNames.push_back("grass_green-01_diffusespecular.dds");
+			    defaultimp.layerList[1].textureNames.push_back("grass_green-01_normalheight.dds");
+			    defaultimp.layerList[2].worldSize = 200;
+			    defaultimp.layerList[2].textureNames.push_back("growth_weirdfungus-03_diffusespecular.dds");
+			    defaultimp.layerList[2].textureNames.push_back("growth_weirdfungus-03_normalheight.dds");
+			    
+			    在这里，我们通过调用defaultimp.layerList.resize(3)将地形纹理的层数设为3。接着我们通过设置“worldSize”和指定纹理的名称来初始化每一层。“worldSize”决定每一个纹理的大小。更小的值将会增加渲染纹理层的分辨率。
+			    默认的材质生成器每层接受2个纹理：
+			    	1、diffuse_specular -在alpha通道有反射图的漫反射纹理。
+			    	2、normal_height -在alpha通道有法向量图的高度图。
+			    	
+			    如果你想知道这些纹理是如何产生的，请参考（http://www.ogre3d.org/tikiwiki/tiki-index.php?page=Ogre+Terrain+Textures），这里使用的文件包含在OGRE源码发布版的Samples文件夹中。
+			    我们的整个configureTerrainDefaults函数看起来像下面这个样子：
+			    void BasicTutorial3::configureTerrainDefaults(Ogre::Light* light)
+				{
+				    // Configure global
+				    mTerrainGlobals->setMaxPixelError(8);
+				    // testing composite map
+				    mTerrainGlobals->setCompositeMapDistance(3000);
+				 
+				    // Important to set these so that the terrain knows what to use for derived (non-realtime) data
+				    mTerrainGlobals->setLightMapDirection(light->getDerivedDirection());
+				    mTerrainGlobals->setCompositeMapAmbient(mSceneMgr->getAmbientLight());
+				    mTerrainGlobals->setCompositeMapDiffuse(light->getDiffuseColour());
+				 
+				    // Configure default import settings for if we use imported image
+				    Ogre::Terrain::ImportData& defaultimp = mTerrainGroup->getDefaultImportSettings();
+				    defaultimp.terrainSize = 513;
+				    defaultimp.worldSize = 12000.0f;
+				    defaultimp.inputScale = 600;
+				    defaultimp.minBatchSize = 33;
+				    defaultimp.maxBatchSize = 65;
+				    // textures
+				    defaultimp.layerList.resize(3);
+				    defaultimp.layerList[0].worldSize = 100;
+				    defaultimp.layerList[0].textureNames.push_back("dirt_grayrocky_diffusespecular.dds");
+				    defaultimp.layerList[0].textureNames.push_back("dirt_grayrocky_normalheight.dds");
+				    defaultimp.layerList[1].worldSize = 30;
+				    defaultimp.layerList[1].textureNames.push_back("grass_green-01_diffusespecular.dds");
+				    defaultimp.layerList[1].textureNames.push_back("grass_green-01_normalheight.dds");
+				    defaultimp.layerList[2].worldSize = 200;
+				    defaultimp.layerList[2].textureNames.push_back("growth_weirdfungus-03_diffusespecular.dds");
+				    defaultimp.layerList[2].textureNames.push_back("growth_weirdfungus-03_normalheight.dds");
+				}
+			    
+			defineTerrain
+			-----------------------------------------------------------------------------------------------------------------
+				下面是我们的defineTerrain函数：
+				void BasicTutorial3::defineTerrain(long x, long y)
+				{
+				    Ogre::String filename = mTerrainGroup->generateFilename(x, y);
+				    if (Ogre::ResourceGroupManager::getSingleton().resourceExists(mTerrainGroup->getResourceGroup(), filename))
+				    {
+				        mTerrainGroup->defineTerrain(x, y);
+				    }
+				    else
+				    {
+				        Ogre::Image img;
+				        getTerrainImage(x % 2 != 0, y % 2 != 0, img);
+				        mTerrainGroup->defineTerrain(x, y, &img);
+				        mTerrainsImported = true;
+				    }
+				}
+				这个函数很简单，但是很聪明。
+				首先，它询问TerrainGroup我们要产生的地形的文件名称；接着，它检查在我们的资源组中是否已经存在一个同名的文件，如果存在则说明我们已经产生了一个二进制地形数据文件，我们不需要从图像文件中再次导入它，如果现在没有数据文件，那意味着我们不得不产生我们的地形，因此我们载入文件并用它来定义地形。
+				这个函数使用了一个小的辅助函数getTerrainImage()
+				
+		getTerrainImage
+		---------------------------------------------------------------------------------------------------------------------
+			
+				
+			    
+			    
 	
   	

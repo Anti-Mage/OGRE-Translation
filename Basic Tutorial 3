@@ -435,6 +435,149 @@
 				
 		getTerrainImage
 		---------------------------------------------------------------------------------------------------------------------
+			因为这个函数真的很小并且只使用一次，它在实现文件中被当做静态局部函数：
+			void getTerrainImage(bool flipX, bool flipY, Ogre::Image& img)
+			{
+			    img.load("terrain.png", Ogre::ResourceGroupManager::DEFAULT_RESOURCE_GROUP_NAME);
+			    if (flipX)
+			        img.flipAroundY();
+			    if (flipY)
+			        img.flipAroundX();
+			 
+			}
+			它从资源位置加载terrain.png，如果有必要的话则翻转它。
+			注意：翻转是用来模拟无缝的地形，因此你可以使用一个513*513的高度图来创建一个没有限制的地形。如果你的地形高度图已经是无缝的，那么你不需要做任何的翻转；你只是对每一个地形定义了特殊的高度图。在本教程中我们只使用1*1TerrainGroup（请看createScene()函数），因此这段实际上并没用使用。
+			（TODO：因为我们不会去介绍地形分类，所以为了简单起见，删除这个函数可能更好。但是请为了我们的中级教程保存这个函数）
+		initBlendMaps
+		---------------------------------------------------------------------------------------------------------------------
+			还记得我们在configureTerrainDefaults()函数中定义的3种地形层吗？现在我们会基于瓷砖的高度来混合这些层，你可以使用从高度图中分出来的存储在文件中的RGBA通道的alpha通道。
+			下面是完整的initBlendMaps函数：
+			void BasicTutorial3::initBlendMaps(Ogre::Terrain* terrain)
+			{
+			    Ogre::TerrainLayerBlendMap* blendMap0 = terrain->getLayerBlendMap(1);
+			    Ogre::TerrainLayerBlendMap* blendMap1 = terrain->getLayerBlendMap(2);
+			    Ogre::Real minHeight0 = 70;
+			    Ogre::Real fadeDist0 = 40;
+			    Ogre::Real minHeight1 = 70;
+			    Ogre::Real fadeDist1 = 15;
+			    float* pBlend0 = blendMap0->getBlendPointer();
+			    float* pBlend1 = blendMap1->getBlendPointer();
+			    for (Ogre::uint16 y = 0; y < terrain->getLayerBlendMapSize(); ++y)
+			    {
+			        for (Ogre::uint16 x = 0; x < terrain->getLayerBlendMapSize(); ++x)
+			        {
+			            Ogre::Real tx, ty;
+			 
+			            blendMap0->convertImageToTerrainSpace(x, y, &tx, &ty);
+			            Ogre::Real height = terrain->getHeightAtTerrainPosition(tx, ty);
+			            Ogre::Real val = (height - minHeight0) / fadeDist0;
+			            val = Ogre::Math::Clamp(val, (Ogre::Real)0, (Ogre::Real)1);
+			            *pBlend0++ = val;
+			 
+			            val = (height - minHeight1) / fadeDist1;
+			            val = Ogre::Math::Clamp(val, (Ogre::Real)0, (Ogre::Real)1);
+			            *pBlend1++ = val;
+			        }
+			    }
+			    blendMap0->dirty();
+			    blendMap1->dirty();
+			    blendMap0->update();
+			    blendMap1->update();
+			}
+			我们不会深入了解它在本教程中是如何工作的。我们只是说它使用地形高度成像。请注意getLayerBlendMap()和getBlendPointer()的使用。
+			
+		编译并运行--第一部分
+			现在请编译并运行你的Basic Tutorial 3应用程序。你将会的到一个很好的渲染的地形。
+			但是我们可以添加3项功能来提高我们的小程序：
+			1、地形产生指示器
+			2、保存地形
+			3、清理内存
+			首先，我们需要向BasicTutorial3类中添加一个私有数据成员：
+			OgreBites::Label* mInfoLabel;
+			
+			然后我们需要重写BasicTutorial3类中的3个函数：
+			1、frameRenderingQueued -显示地形产生的过程并在完成的时候保存它。
+			2、createFrameListener -创建信息标签
+			3、destroyScene -程序完成之后释放内存
+			
+		frameRenderingQueued
+		---------------------------------------------------------------------------------------------------------------------
+		bool BasicTutorial3::frameRenderingQueued(const Ogre::FrameEvent& evt)
+		{
+		    bool ret = BaseApplication::frameRenderingQueued(evt);
+		 
+		    if (mTerrainGroup->isDerivedDataUpdateInProgress())
+		    {
+		        mTrayMgr->moveWidgetToTray(mInfoLabel, OgreBites::TL_TOP, 0);
+		        mInfoLabel->show();
+		        if (mTerrainsImported)
+		        {
+		            mInfoLabel->setCaption("Building terrain, please wait...");
+		        }
+		        else
+		        {
+		            mInfoLabel->setCaption("Updating textures, patience...");
+		        }
+		    }
+		    else
+		    {
+		        mTrayMgr->removeWidgetFromTray(mInfoLabel);
+		        mInfoLabel->hide();
+		        if (mTerrainsImported)
+		        {
+		            mTerrainGroup->saveAllTerrains(true);
+		            mTerrainsImported = false;
+		        }
+		    }
+		 
+		    return ret;
+		}
+		
+		首先我们询问TerrainGroup是否正在产生地形：isDerivedDataUpdateInProgress。如果产生地形，我们使用正确的标题显示信息标签。如果没有正在产生地形，检查我们是否已经导入了一个新的地形。如果我们导入了，我们保存所有的地形，因此下次运行的时候可以跳过产生过程。
+		
+	createFrameListener
+	-------------------------------------------------------------------------------------------------------------------------
+		我们重写了这个函数，因为我们想向OgreBites::SdkTrayManager mTrayMgr中添加一个新的信息标签。由于BaseApplication类在createFrameListener函数中构造了一个标签，我们不能把这个添加到createScene函数中，因为createFrameListener函数在createScene之后调用的。
+		void BasicTutorial3::createFrameListener(void)
+		{
+		    BaseApplication::createFrameListener();
+		 
+		    mInfoLabel = mTrayMgr->createLabel(OgreBites::TL_TOP, "TInfo", "", 350);
+		}
+		这个函数很简单，调用BaseApplication::createFrameListener函数，然后传入我们的信息标签。
+		
+	destroyScene
+	-------------------------------------------------------------------------------------------------------------------------
+		下面是我们要做的清理工作：
+		void BasicTutorial3::destroyScene(void)
+		{
+		    OGRE_DELETE mTerrainGroup;
+		    OGRE_DELETE mTerrainGlobals;
+		}
+		
+	编译并运行--第二部分
+		如果你现在编译并运行，将会有一个信息标签告诉你TerrainGroup正在忙着产生地形。当标签消失的时候，TerrainGroup将会保存地形。
+		你很有可能已经注意到了，在地形正在产生的时候你不能退出程序。但是如果你再次运行这个程序，你将不会接受到任何信息并且启动将会更快，因为我们直接加载了已经产生的地形数据文件。
+		去OGRE_HOME/media看看吧，你应该可以看到BasicTutorial3Terrain_00000000.dat文件。
+		
+		
+天空
+—————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
+	OGRE提供了3中类型的天空：SkyBoxes、SkyDomes和SkyPlanes，我们将会详细的介绍每一种类型的天空。
+	
+	SkyBoxes
+	-------------------------------------------------------------------------------------------------------------------------
+		一个SkyBoxes基本上一个环绕着场景中所有物体的巨大立方体。向你描述它的最好的方式就是展示它，将下面这行代码加入到createScene函数中：
+		mSceneMgr->setSkyBox(true, "Examples/SpaceSkyBox");
+		编译并运行程序。干净吧？（注意到SkyBoxes模糊不清，因为实际纹理是低分辨率的；高分辨率的的SkyBoxes将会看起来效果更好）。你可以调用 setSkyBox来设置SkyBoxes的几个有用的参数。第一个参数是是否允许SkyBoxe。如果你想要之后禁止SkyBoxe你可以简单的调用mSceneMgr->setSkyBox(false, "")；第二个参数是SkyBoxe使用的材质脚本；理解setSkyBox的第三个和第四个参数相当重要。第三个参数设置SkyBox与相机之间的距离；第四个参数设置在场景中所有的物体之前绘制天空还是在所有的物体之后绘制天空。让我们来看看当我们把SkyBox的距离参数从默认的5000修改为更近的距离会发生什么：
+		mSceneMgr->setSkyBox(true, "Examples/SpaceSkyBox", 10);
+		没有什么改变了！这是因为控制着第一个绘制天空还是最后一个绘制天空的第四个参数被默认设置为true。如果天空是第一个被绘制的，那么在它之后渲染的所有物体都将绘制在它上面，这将使得天空通常出现在背景上。（注意：你不应该将上面的距离设置的比近裁剪距离还小，那样的话相机将不会显示）。首先绘制天空不是我们的意思，因为所有的东西都都被渲染了。当我们最后绘制它的时候，只有可见的部分被显示了，这将带来速度的提升。因此让我们将SkyBox设置为最后绘制：
+		mSceneMgr->setSkyBox(true, "Examples/SpaceSkyBox", 5000, false);
+		这个看起来像之前做过的，但是现在SkyBoxe中不可见的部分将不会被渲染，当使用这个技术的时候有一件需要注意的事情就是：如果你将SkyBoxe设置的太近，你可能会裁剪掉场景集合体的一部分。例如，尝试下面的代码：
+		mSceneMgr->setSkyBox(true, "Examples/SpaceSkyBox", 100, false);
+		正如你现在所看到的
+		
+			
 			
 				
 			    
